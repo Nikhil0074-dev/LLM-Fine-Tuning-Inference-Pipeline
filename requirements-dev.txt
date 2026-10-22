@@ -1,0 +1,5 @@
+-r requirements.txt
+pytest
+httpx
+moto[s3]
+fakeredis
