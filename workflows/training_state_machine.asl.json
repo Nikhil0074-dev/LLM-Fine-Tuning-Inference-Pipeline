@@ -1,0 +1,58 @@
+{
+  "Comment": "Fine-tuning workflow. Training and evaluation run inside one SageMaker job. The API applies the approval gate.",
+  "StartAt": "MarkTraining",
+  "States": {
+    "MarkTraining": {
+      "Type": "Task",
+      "Resource": "${CALLBACK_LAMBDA_ARN}",
+      "Parameters": { "job_id.$": "$.job_id", "tenant.$": "$.tenant", "action": "stage", "status": "TRAINING" },
+      "ResultPath": null,
+      "Retry": [{ "ErrorEquals": ["States.ALL"], "IntervalSeconds": 5, "MaxAttempts": 3, "BackoffRate": 2.0 }],
+      "Catch": [{ "ErrorEquals": ["States.ALL"], "ResultPath": "$.error", "Next": "MarkFailed" }],
+      "Next": "Train"
+    },
+    "Train": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::sagemaker:createTrainingJob.sync",
+      "Parameters": {
+        "TrainingJobName.$": "$.training_job_name",
+        "RoleArn": "${SAGEMAKER_ROLE_ARN}",
+        "AlgorithmSpecification": { "TrainingImage": "${TRAINING_IMAGE}", "TrainingInputMode": "File" },
+        "ResourceConfig": { "InstanceCount": 1, "InstanceType.$": "$.instance_type", "VolumeSizeInGB": 50 },
+        "StoppingCondition": { "MaxRuntimeInSeconds": 7200 },
+        "HyperParameters.$": "$.hyperparameters",
+        "InputDataConfig": [
+          { "ChannelName": "train", "DataSource": { "S3DataSource": { "S3DataType": "S3Prefix", "S3Uri.$": "$.train_prefix_uri", "S3DataDistributionType": "FullyReplicated" } } },
+          { "ChannelName": "validation", "DataSource": { "S3DataSource": { "S3DataType": "S3Prefix", "S3Uri.$": "$.val_prefix_uri", "S3DataDistributionType": "FullyReplicated" } } }
+        ],
+        "OutputDataConfig": { "S3OutputPath.$": "$.output_uri" }
+      },
+      "ResultPath": "$.training",
+      "Retry": [{ "ErrorEquals": ["SageMaker.AmazonSageMakerException"], "IntervalSeconds": 30, "MaxAttempts": 2, "BackoffRate": 2.0 }],
+      "Catch": [{ "ErrorEquals": ["States.ALL"], "ResultPath": "$.error", "Next": "MarkFailed" }],
+      "Next": "Register"
+    },
+    "Register": {
+      "Type": "Task",
+      "Resource": "${CALLBACK_LAMBDA_ARN}",
+      "Parameters": {
+        "job_id.$": "$.job_id",
+        "tenant.$": "$.tenant",
+        "action": "complete",
+        "model_artifact_s3_uri.$": "$.training.ModelArtifacts.S3ModelArtifacts",
+        "metrics_s3_uri.$": "$.metrics_s3_uri"
+      },
+      "ResultPath": null,
+      "Retry": [{ "ErrorEquals": ["States.ALL"], "IntervalSeconds": 10, "MaxAttempts": 3, "BackoffRate": 2.0 }],
+      "Catch": [{ "ErrorEquals": ["States.ALL"], "ResultPath": "$.error", "Next": "MarkFailed" }],
+      "End": true
+    },
+    "MarkFailed": {
+      "Type": "Task",
+      "Resource": "${CALLBACK_LAMBDA_ARN}",
+      "Parameters": { "job_id.$": "$.job_id", "tenant.$": "$.tenant", "action": "fail", "error.$": "$.error.Error" },
+      "Next": "Failed"
+    },
+    "Failed": { "Type": "Fail", "Error": "TrainingWorkflowFailed", "Cause": "See the job record for details." }
+  }
+}
