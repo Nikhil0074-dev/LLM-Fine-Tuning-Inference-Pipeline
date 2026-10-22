@@ -1,0 +1,18 @@
+# Python and test artifacts
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+
+# Local runtime data
+data/
+
+# Environment and Terraform state
+.env
+.terraform/
+*.tfstate
+*.tfstate.*
+
+# Build and archive artifacts
+*.zip
+*.tar.gz
