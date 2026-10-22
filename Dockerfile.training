@@ -1,0 +1,10 @@
+# SageMaker training image. Build, push to ECR, and put the image URI in LLMP_TRAINING_IMAGE / Terraform.
+FROM python:3.12-slim
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
+WORKDIR /opt/program
+COPY requirements-training.txt .
+RUN pip install --no-cache-dir -r requirements-training.txt
+COPY app ./app
+COPY training ./training
+# SageMaker runs the image with the argument "train"; the entry point ignores it.
+ENTRYPOINT ["python", "-m", "training.sagemaker_entry"]

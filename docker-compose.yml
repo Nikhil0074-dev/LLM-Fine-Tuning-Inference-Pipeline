@@ -1,0 +1,13 @@
+services:
+  redis:
+    image: redis:7-alpine
+  api:
+    build: .
+    ports: ["8000:8000"]
+    environment:
+      LLMP_REDIS_URL: redis://redis:6379/0
+      LLMP_API_KEYS: ${LLMP_API_KEYS:?set LLMP_API_KEYS in .env}
+    volumes: ["pipeline-data:/data"]
+    depends_on: [redis]
+volumes:
+  pipeline-data:
